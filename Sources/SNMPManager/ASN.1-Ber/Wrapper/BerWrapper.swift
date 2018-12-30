@@ -1,10 +1,10 @@
-public struct BerWrapper<Value: BerTagedObject>: BerObject {
-    public var tag: BerEncodable  {
+struct BerWrapper<Value: BerTagedObject>: BerObject {
+    var tag: BerEncodable  {
         return Value.tag
     }
-    public var value: Value
+    var value: Value
     
-    public init(_ value: Value) {
+    init(_ value: Value) {
         self.value = value
     }
 }

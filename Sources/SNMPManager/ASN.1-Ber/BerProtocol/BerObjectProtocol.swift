@@ -1,13 +1,13 @@
 public typealias BerCodable = BerEncodable & BerDecodable
 
-public protocol BerObject: BerEncodable {
+protocol BerObject: BerEncodable {
     associatedtype Value: BerEncodable
     var tag: BerEncodable { get }
     var value: Value { get set }
 }
 
 extension BerEncodable where Self: BerObject {
-    public func berEncode() throws -> [UInt8] {
+    func berEncode() throws -> [UInt8] {
         do {
             let valueBytes = try value.berEncode()
             let lengthBytes = try Length(value: valueBytes.count).berEncode()

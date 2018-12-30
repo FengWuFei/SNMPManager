@@ -1,8 +1,8 @@
-public struct AnyBerWrapper<Value: BerEncodable>: BerObject {
-    public var tag: BerEncodable
-    public var value: Value
+struct AnyBerWrapper<Value: BerEncodable>: BerObject {
+    var tag: BerEncodable
+    var value: Value
     
-    public init(tag: BerEncodable, value: Value) {
+    init(tag: BerEncodable, value: Value) {
         self.tag = tag
         self.value = value
     }

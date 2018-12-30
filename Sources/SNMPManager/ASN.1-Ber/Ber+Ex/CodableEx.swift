@@ -1,3 +1,5 @@
+import Foundation
+
 extension Int: BerCodable {
     // 取补码
     public func berEncode() throws -> [UInt8] {
@@ -74,20 +76,22 @@ extension String: BerCodable {
 }
 
 extension BerNull: BerCodable {
-    public func berEncode() -> [UInt8] {
+    func berEncode() -> [UInt8] {
         return []
     }
     
-    public static func berDecode(_ bytes: [UInt8]) throws -> BerNull {
+    static func berDecode(_ bytes: [UInt8]) throws -> BerNull {
         guard bytes.count < 1 else { throw BerDecodeError.invalidNull }
         return BerNull()
     }
 }
 
 extension BerObjectId: BerCodable {
-    public func berEncode() -> [UInt8] {
+    func berEncode() throws -> [UInt8] {
+        guard NSPredicate(format: "SELF MATCHES %@", "^([0-9]+\\\(".")){3,}[0-9]+$")
+            .evaluate(with: value) else { throw BerEncodeError.intValueOID }
         var bytes: [UInt8] = []
-        var tmp = oid.split(separator: ".")
+        var tmp = value.split(separator: ".")
             .map { Int($0)! }
         let head = 40 * tmp.removeFirst() + tmp.removeFirst()
         bytes.append(UInt8(head & 0xff))
@@ -119,7 +123,7 @@ extension BerObjectId: BerCodable {
         return bytes
     }
     
-    public static func berDecode(_ bytes: [UInt8]) throws -> BerObjectId {
+    static func berDecode(_ bytes: [UInt8]) throws -> BerObjectId {
         var values = [Int]()
         var value = 0
         
@@ -137,40 +141,39 @@ extension BerObjectId: BerCodable {
         values.insert((value / 40) >> 0, at: 0)
         
         let str = values.map(String.init).joined(separator: ".")
-        guard let ob = BerObjectId(str) else { throw BerDecodeError.wrongOID }
-        return ob
+        return BerObjectId(value: str)
     }
 }
 
 extension BytesSequence: BerCodable {
-    public func berEncode() -> [UInt8] {
+    func berEncode() -> [UInt8] {
         return value
     }
     
-    public static func berDecode(_ bytes: [UInt8]) throws -> BytesSequence {
+    static func berDecode(_ bytes: [UInt8]) throws -> BytesSequence {
         return BytesSequence(value: bytes)
     }
 }
 
 extension SNMPIpAddress: BerCodable {
-    public func berEncode() throws -> [UInt8] {
+    func berEncode() throws -> [UInt8] {
         return try self.value.split(separator: ".").map { byteStr throws -> UInt8 in
             guard let byte = UInt8(byteStr) else { throw BerEncodeError.invalidIPAddress }
             return byte
         }
     }
     
-    public static func berDecode(_ bytes: [UInt8]) throws -> SNMPIpAddress {
+    static func berDecode(_ bytes: [UInt8]) throws -> SNMPIpAddress {
         return  SNMPIpAddress(value: bytes.map { String($0) }.joined(separator: "."))
     }
 }
 
 extension SNMPTimeTicks: BerCodable {
-    public func berEncode() throws -> [UInt8] {
+    func berEncode() throws -> [UInt8] {
         return try value.berEncode()
     }
     
-    public static func berDecode(_ bytes: [UInt8]) throws -> SNMPTimeTicks {
+    static func berDecode(_ bytes: [UInt8]) throws -> SNMPTimeTicks {
         return try SNMPTimeTicks(value: UInt.berDecode(bytes))
     }
 }

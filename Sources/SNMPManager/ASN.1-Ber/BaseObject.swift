@@ -1,6 +1,4 @@
-import Foundation
-
-public enum BerTag: UInt8 {
+enum BerTag: UInt8 {
     case boolean = 0x01
     case integer = 0x02
     case octetString = 0x04
@@ -41,15 +39,15 @@ public enum BerTag: UInt8 {
 }
 
 extension BerTag: BerEncodable {
-    public func berEncode() -> [UInt8] {
+    func berEncode() -> [UInt8] {
         return [rawValue]
     }
 }
 
-public struct Length: BerEncodable {
-    public var value: Int
+struct Length: BerEncodable {
+    var value: Int
     
-    public func berEncode() throws -> [UInt8] {
+    func berEncode() throws -> [UInt8] {
         if value <= 0x7f {
             return [UInt8(value)]
         } else if value <= 0xff {
@@ -64,30 +62,22 @@ public struct Length: BerEncodable {
     }
 }
 
-public struct BytesSequence {
+struct BytesSequence {
     var value: [UInt8]
 }
 
-public struct BerNull {
-    public init() {}
+struct BerNull {
+    init() {}
 }
 
-public struct BerObjectId {
-    public var oid: String
-    
-    public init?(_ oid: String) {
-        guard NSPredicate(format: "SELF MATCHES %@", "^([0-9]+\\\(".")){3,}[0-9]+$")
-            .evaluate(with: oid) else {
-                return nil
-        }
-        self.oid = oid
-    }
+struct BerObjectId {
+    var value: String
 }
 
-public struct SNMPIpAddress {
-    public var value: String
+struct SNMPIpAddress {
+    var value: String
 }
 
-public struct SNMPTimeTicks {
-    public var value: UInt
+struct SNMPTimeTicks {
+    var value: UInt
 }

@@ -1,18 +1,32 @@
-public enum BerDecodeError: Error {
+import Vapor
+
+public enum BerDecodeError: String, Error, Debuggable {
     case outOfRange
     case invalidTag
     case indefiniteLength, lengthTooLong, lengthLostBytes
-    case nullString, wrongIntBytes, wrongOID
+    case nullString, wrongIntBytes
     case invalidNull
+    case invalidVersion, invalidPDUType, invalidErrorStatus
+    
+    public var identifier: String {
+        return "SNMPManagerDecodeError"
+    }
+    public var reason: String {
+        return self.rawValue
+    }
 }
 
-public enum BerEncodeError: Error {
+public enum BerEncodeError: String, Error, Debuggable {
     case intValueTooLong
     case uIntValueTooLong
     case lengthTooLong
     case invalidIPAddress
-}
-
-public enum SnmpError: Error {
-    case invalidVersion, invalidPDUType, invalidErrorStatus
+    case intValueOID
+    
+    public var identifier: String {
+        return "SNMPManagerEncodeError"
+    }
+    public var reason: String {
+        return self.rawValue
+    }
 }

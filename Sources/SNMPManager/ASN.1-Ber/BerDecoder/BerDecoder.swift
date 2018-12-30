@@ -1,25 +1,25 @@
-public class BerDecoder {
+class BerDecoder {
     private var bytes: [UInt8] = []
     private var offset = 0
     
-    public var hasValue: Bool {
+    var hasValue: Bool {
         return bytes.count > offset
     }
     
-    public init(bytes: [UInt8]) {
+    init(bytes: [UInt8]) {
         self.bytes = bytes
     }
     
-    public init() {
+    init() {
         self.bytes = []
     }
     
-    public func set(_ bytes: [UInt8]) {
+    func set(_ bytes: [UInt8]) {
         self.bytes = bytes
         offset = 0
     }
     
-    public func readSequence() throws {
+    func readSequence() throws {
         do {
             try readTag(BerTag.sequence)
             try readLength()
@@ -28,7 +28,7 @@ public class BerDecoder {
         }
     }
     
-    public func readPduType() throws -> UInt8 {
+    func readPduType() throws -> UInt8 {
         do {
             let tag = try readTag()
             try readLength()
@@ -38,7 +38,7 @@ public class BerDecoder {
         }
     }
     
-    public func readValue<T: BerTagedObject>(to type: T.Type = T.self) throws -> T {
+    func readValue<T: BerTagedObject>(to type: T.Type = T.self) throws -> T {
         do {
             try readTag(T.tag)
             let length = try readLength()
@@ -48,7 +48,7 @@ public class BerDecoder {
         }
     }
     
-    public func readAny() throws -> BerTagedObject {
+    func readAny() throws -> BerTagedObject {
         do {
             let _tag = bytes[offset]
             guard let tag = BerTag(rawValue: _tag) else { throw BerDecodeError.invalidTag }
@@ -61,15 +61,15 @@ public class BerDecoder {
         }
     }
     
-    func readValueBinds() throws -> [(BerObjectId, BerTagedObject)] {
+    func readValueBinds() throws -> [(String, BerTagedObject)] {
         do {
-            var dic: [(BerObjectId, BerTagedObject)] = []
+            var dic: [(String, BerTagedObject)] = []
             try readSequence()
             while hasValue {
                 try readSequence()
                 let oid: BerObjectId = try readValue()
                 let value = try readAny()
-                dic.append((oid, value))
+                dic.append((oid.value, value))
             }
             return dic
         } catch {
@@ -77,7 +77,8 @@ public class BerDecoder {
         }
     }
     
-    @discardableResult public func readTag(_ expect: BerEncodable? = nil) throws -> UInt8 {
+    @discardableResult
+    func readTag(_ expect: BerEncodable? = nil) throws -> UInt8 {
         do {
             let readTag = try readOneByte()
             guard let expectTag = try expect?.berEncode()[0] else { return readTag }
@@ -90,7 +91,8 @@ public class BerDecoder {
         }
     }
     
-    @discardableResult public func readLength() throws -> Int {
+    @discardableResult
+    func readLength() throws -> Int {
         do {
             var length: Int
             var lengthByte = try readOneByte() & 0xff

@@ -1,4 +1,6 @@
 public struct ValueBinds {
-    public var dic: [(key: BerObjectId, value: BerTagedObject)] = []
-    public init() {}
+    public var dic: [(key: String, value: BerTagedObject)]
+    public init(_ dic: [(key: String, value: BerTagedObject)]) {
+        self.dic = dic
+    }
 }

@@ -4,11 +4,11 @@ public protocol BerTagedObject: BerCodable {
 }
 
 extension BerTagedObject {
-    public func wraped() -> BerWrapper<Self> {
+    func wraped() -> BerWrapper<Self> {
         return BerWrapper(self)
     }
     
-    public func wrapedAndEncode() throws -> [UInt8] {
+    func wrapedAndEncode() throws -> [UInt8] {
         do {
             return try BerWrapper(self).berEncode()
         } catch {
@@ -18,7 +18,7 @@ extension BerTagedObject {
 }
 
 extension BerTagedObject {
-    public static var null: BerNull {
+    static var null: BerNull {
         return BerNull()
     }
 }

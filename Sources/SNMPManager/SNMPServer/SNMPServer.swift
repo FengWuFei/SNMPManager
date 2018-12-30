@@ -1,17 +1,6 @@
 import Vapor
 
-public struct IPAddress {
-    let hostname: String
-    let port: Int
-    
-    public init(hostname: String, port: Int) {
-        self.hostname = hostname
-        self.port = port
-    }
-}
-
 public enum SNMPManagerError: String, Error, Debuggable {
-    case invalidOID
     case equipmentNoResponse
     
     public var identifier: String {
@@ -33,7 +22,8 @@ public final class SNMPManager: Service {
     }
 
     public static func start(
-        localServerAddress: IPAddress,
+        hostname: String,
+        port: Int,
         on group: EventLoopGroup,
         onError: @escaping (Error) -> () = { _ in },
         onTrap: @escaping (SNMPMessage) -> () = { _ in }
@@ -45,7 +35,7 @@ public final class SNMPManager: Service {
             .channelInitializer { channel in
                 return channel.pipeline.addHandlers([snmpParser, queueHandler], first: false)
         }
-        return bootstrap.bind(host: localServerAddress.hostname, port: localServerAddress.port)
+        return bootstrap.bind(host: hostname, port: port)
             .map { SNMPManager(channel: $0, handler: queueHandler) }
     }
     
@@ -63,7 +53,7 @@ public final class SNMPManager: Service {
         version: SNMPVersion = .v2c,
         community: String,
         hostname: String,
-        port: Int
+        port: Int = 161
     )  -> Future<SNMPMessage> {
         return send(.get,
                     dic: oids.map { ($0, BerNull()) },
@@ -77,7 +67,7 @@ public final class SNMPManager: Service {
         version: SNMPVersion = .v2c,
         community: String,
         hostname: String,
-        port: Int
+        port: Int = 161
     )  -> Future<SNMPMessage> {
         return send(.set,
                     dic: dic,
@@ -95,13 +85,7 @@ public final class SNMPManager: Service {
         port: Int
     )  -> Future<SNMPMessage> {
         let requestId = UInt32.random(in: 0x01010101...0xffffffff)
-        var vb = ValueBinds()
-        for (key, value) in dic {
-            guard let id = BerObjectId(key) else {
-                return channel.eventLoop.newFailedFuture(error: SNMPManagerError.invalidOID)
-            }
-            vb.dic.append((id, value))
-        }
+        let vb = ValueBinds(dic)
         let pdu = SNMPBasicPDU(type: type, requestId: Int(requestId), errorStatus: .noError, errorIndex: 0, valueBinds: vb)
         let message = SNMPMessage(version: version, community: community, pdu: .basic(pdu))
         return send(request: message, uniqueId: Int(requestId), hostname: hostname, port: port)
@@ -151,8 +135,8 @@ private final class SNMPResponseParser: ChannelInboundHandler {
 }
 
 private final class SNMPQueueHandler: ChannelInboundHandler {
-    public typealias InboundIn = SNMPMessage
-    public typealias OutboundOut = AddressedEnvelope<ByteBuffer>
+    typealias InboundIn = SNMPMessage
+    typealias OutboundOut = AddressedEnvelope<ByteBuffer>
     
     private var inputQueue: [Int: InputContext<InboundIn>]
     private var outputQueue: [[AddressedEnvelope<ByteBuffer>]]
@@ -162,7 +146,7 @@ private final class SNMPQueueHandler: ChannelInboundHandler {
     private var errorHandler: (Error) -> ()
     private var trapHandler: (SNMPMessage) -> ()
     
-    public init(
+    init(
         on worker: Worker,
         onError: @escaping (Error) -> (),
         onTrap: @escaping (SNMPMessage) -> ()
@@ -174,7 +158,7 @@ private final class SNMPQueueHandler: ChannelInboundHandler {
         self.trapHandler = onTrap
     }
 
-    public func enqueue(_ output: [AddressedEnvelope<ByteBuffer>], inputKey: Int, onInput: @escaping (InboundIn) throws -> Void) -> Future<Void> {
+    func enqueue(_ output: [AddressedEnvelope<ByteBuffer>], inputKey: Int, onInput: @escaping (InboundIn) throws -> Void) -> Future<Void> {
         guard eventLoop.inEventLoop else {
             return eventLoop.submit {
                 // do nothing
@@ -210,7 +194,7 @@ private final class SNMPQueueHandler: ChannelInboundHandler {
         waitingCtx = ctx
     }
     
-    public func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
+    func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
         let input = unwrapInboundIn(data)
         let pduType = input.pdu.type
         switch pduType {
@@ -236,11 +220,11 @@ private final class SNMPQueueHandler: ChannelInboundHandler {
         }
     }
     
-    public func channelActive(ctx: ChannelHandlerContext) {
+    func channelActive(ctx: ChannelHandlerContext) {
         writeOutputIfEnqueued(ctx: ctx)
     }
     
-    public func errorCaught(ctx: ChannelHandlerContext, error: Error) {
+    func errorCaught(ctx: ChannelHandlerContext, error: Error) {
         errorHandler(error)
     }
 }
