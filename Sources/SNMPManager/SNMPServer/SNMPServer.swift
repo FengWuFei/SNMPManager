@@ -53,13 +53,18 @@ public final class SNMPManager: Service {
         version: SNMPVersion = .v2c,
         community: String,
         hostname: String,
-        port: Int = 161
+        port: Int = 161,
+        timeout: Int = 15
     )  -> Future<SNMPMessage> {
-        return send(.get,
-                    dic: oids.map { ($0, BerNull()) },
-                    version: version,
-                    community: community,
-                    hostname: hostname, port: port)
+        return send(
+            .get,
+            dic: oids.map { ($0, BerNull()) },
+            version: version,
+            community: community,
+            hostname: hostname,
+            port: port,
+            timeout: timeout
+        )
     }
     
     public func set(
@@ -67,13 +72,18 @@ public final class SNMPManager: Service {
         version: SNMPVersion = .v2c,
         community: String,
         hostname: String,
-        port: Int = 161
+        port: Int = 161,
+        timeout: Int = 15
     )  -> Future<SNMPMessage> {
-        return send(.set,
-                    dic: dic,
-                    version: version,
-                    community: community,
-                    hostname: hostname, port: port)
+        return send(
+            .set,
+            dic: dic,
+            version: version,
+            community: community,
+            hostname: hostname,
+            port: port,
+            timeout: timeout
+        )
     }
     
     private func send(
@@ -82,16 +92,17 @@ public final class SNMPManager: Service {
         version: SNMPVersion,
         community: String,
         hostname: String,
-        port: Int
+        port: Int,
+        timeout: Int
     )  -> Future<SNMPMessage> {
         let requestId = Int.random(in: 0x1000000...0xfffffff)
         let vb = ValueBinds(dic)
         let pdu = SNMPBasicPDU(type: type, requestId: Int(requestId), errorStatus: .noError, errorIndex: 0, valueBinds: vb)
         let message = SNMPMessage(version: version, community: community, pdu: .basic(pdu))
-        return send(request: message, uniqueId: requestId, hostname: hostname, port: port)
+        return send(request: message, uniqueId: requestId, hostname: hostname, port: port, timeout: timeout)
     }
     
-    private func send(request: SNMPMessage, uniqueId: Int, hostname: String, port: Int) -> Future<SNMPMessage> {
+    private func send(request: SNMPMessage, uniqueId: Int, hostname: String, port: Int, timeout: Int) -> Future<SNMPMessage> {
         let bytes: [UInt8]
         do {
             bytes = try request.berEncode()
@@ -101,12 +112,12 @@ public final class SNMPManager: Service {
         var buffer = channel.allocator.buffer(capacity: bytes.count)
         buffer.write(bytes: bytes)
         let ms = AddressedEnvelope(remoteAddress: try! SocketAddress.newAddressResolving(host: hostname, port: port), data: buffer)
-        return send(ms, uniqueId: uniqueId)
+        return send(ms, uniqueId: uniqueId, timeout: timeout)
     }
 
-    private func send(_ request: AddressedEnvelope<ByteBuffer>, uniqueId: Int) -> Future<SNMPMessage> {
+    private func send(_ request: AddressedEnvelope<ByteBuffer>, uniqueId: Int, timeout: Int) -> Future<SNMPMessage> {
         var res: SNMPMessage?
-        return handler.enqueue([request], inputKey: uniqueId) { message in
+        return handler.enqueue([request], inputKey: uniqueId, timeout: timeout) { message in
             res = message
         }.map(to: SNMPMessage.self) {
             return res!
@@ -158,20 +169,20 @@ private final class SNMPQueueHandler: ChannelInboundHandler {
         self.trapHandler = onTrap
     }
 
-    func enqueue(_ output: [AddressedEnvelope<ByteBuffer>], inputKey: Int, onInput: @escaping (InboundIn) throws -> Void) -> Future<Void> {
+    func enqueue(_ output: [AddressedEnvelope<ByteBuffer>], inputKey: Int, timeout: Int, onInput: @escaping (InboundIn) throws -> Void) -> Future<Void> {
         guard eventLoop.inEventLoop else {
             return eventLoop.submit {
                 // do nothing
             }.flatMap {
                 // perform this on the event loop
-                return self.enqueue(output, inputKey: inputKey, onInput: onInput)
+                return self.enqueue(output, inputKey: inputKey, timeout: timeout, onInput: onInput)
             }
         }
         outputQueue.insert(output, at: 0)
         let promise = eventLoop.newPromise(Void.self)
         let context = InputContext<InboundIn>(promise: promise, onInput: onInput)
         inputQueue[inputKey] = context
-        eventLoop.scheduleTask(in: TimeAmount.seconds(5)) { [unowned self]  in
+        eventLoop.scheduleTask(in: TimeAmount.seconds(timeout)) { [unowned self]  in
             guard let onInputToRemove = self.inputQueue[inputKey] else { return }
             onInputToRemove.promise.fail(error: SNMPManagerError.equipmentNoResponse)
             self.inputQueue.removeValue(forKey: inputKey)
