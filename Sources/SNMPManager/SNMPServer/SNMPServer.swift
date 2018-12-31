@@ -124,7 +124,7 @@ private final class SNMPResponseParser: ChannelInboundHandler {
         while let byte = buffer.readBytes(length: 1) {
             bytes += byte
         }
-        let decoder = SnmpDecoder()
+        let decoder = SNMPDecoder()
         do {
             let res = try decoder.decode(bytes)
             ctx.fireChannelRead(wrapOutboundOut(res))

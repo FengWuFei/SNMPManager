@@ -1,4 +1,4 @@
-final class SnmpDecoder {
+final class SNMPDecoder {
     lazy var decoder = BerDecoder()
     init() {}
     
