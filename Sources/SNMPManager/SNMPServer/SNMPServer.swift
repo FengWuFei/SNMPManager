@@ -84,11 +84,11 @@ public final class SNMPManager: Service {
         hostname: String,
         port: Int
     )  -> Future<SNMPMessage> {
-        let requestId = UInt32.random(in: 0x01010101...0xffffffff)
+        let requestId = Int.random(in: 0x1000000...0xfffffff)
         let vb = ValueBinds(dic)
         let pdu = SNMPBasicPDU(type: type, requestId: Int(requestId), errorStatus: .noError, errorIndex: 0, valueBinds: vb)
         let message = SNMPMessage(version: version, community: community, pdu: .basic(pdu))
-        return send(request: message, uniqueId: Int(requestId), hostname: hostname, port: port)
+        return send(request: message, uniqueId: requestId, hostname: hostname, port: port)
     }
     
     private func send(request: SNMPMessage, uniqueId: Int, hostname: String, port: Int) -> Future<SNMPMessage> {
