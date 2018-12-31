@@ -14,7 +14,7 @@ public enum SNMPManagerError: String, Error, Debuggable {
 public final class SNMPManager: Service {
     private let channel: Channel
     private var handler: SNMPQueueHandler
-    private var eventLoop: EventLoop {
+    public var eventLoop: EventLoop {
         return channel.eventLoop
     }
     public var onClose: EventLoopFuture<Void> {
