@@ -11,6 +11,7 @@ public enum SNMPManagerError: String, Error, Debuggable {
     }
 }
 
+/// SNMP NSM Server
 public final class SNMPManager: Service {
     private let channel: Channel
     private var handler: SNMPQueueHandler
@@ -20,14 +21,23 @@ public final class SNMPManager: Service {
     public var onClose: EventLoopFuture<Void> {
         return channel.closeFuture
     }
-
+    
+    /// Start a Datagram Server and bind to the host & port
+    ///
+    /// - Parameters:
+    ///   - hostname: The hostname to bind on
+    ///   - port: The port to bind on
+    ///   - group: The eventLoopGroup to run
+    ///   - onError: on error message
+    ///   - onTrap: on trap message
+    /// - Returns: future SNMPManager
     public static func start(
         hostname: String,
         port: Int,
         on group: EventLoopGroup,
-        onError: @escaping (Error) -> () = { _ in },
-        onTrap: @escaping (SNMPMessage) -> () = { _ in }
-        ) -> EventLoopFuture<SNMPManager> {
+        onError: @escaping (Error) -> Void,
+        onTrap: @escaping (SNMPMessage) -> Void
+    ) -> EventLoopFuture<SNMPManager> {
         let snmpParser = SNMPResponseParser()
         let queueHandler = SNMPQueueHandler(on: group, onError: onError, onTrap: onTrap)
         let bootstrap = DatagramBootstrap(group: group)
@@ -48,6 +58,22 @@ public final class SNMPManager: Service {
         return channel.close(mode: .all)
     }
     
+    /// SNMP get method
+    ///
+    /// Example:
+    ///
+    /// ```swift
+    ///     let message = nsm.get(["1.3.6.5.1.1.0"], community: "public", hostname: "10.3.10.1")
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - oids: oid array
+    ///   - version: SNMP version
+    ///   - community: community string
+    ///   - hostname: endpoint hostname
+    ///   - port: endpoint port
+    ///   - timeout: wait timeout
+    /// - Returns: future SNMPMessage
     public func get(
         _ oids: [String],
         version: SNMPVersion = .v2c,
@@ -67,6 +93,16 @@ public final class SNMPManager: Service {
         )
     }
     
+    /// SNMP set method
+    ///
+    /// - Parameters:
+    ///   - oids: oid array
+    ///   - version: SNMP version
+    ///   - community: community string
+    ///   - hostname: endpoint hostname
+    ///   - port: endpoint port
+    ///   - timeout: wait timeout
+    /// - Returns: future SNMPMessage
     public func set(
         _ dic: [(String, BerTagedObject)],
         version: SNMPVersion = .v2c,
