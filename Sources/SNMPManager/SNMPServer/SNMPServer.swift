@@ -4,7 +4,7 @@ public enum SNMPManagerError: String, Error, Debuggable {
     case equipmentNoResponse
     
     public var identifier: String {
-        return "SNMPManagerError"
+        return "SNMPManager"
     }
     public var reason: String {
         return self.rawValue
@@ -15,31 +15,37 @@ public enum SNMPManagerError: String, Error, Debuggable {
 public final class SNMPManager: Service {
     private let channel: Channel
     private var handler: SNMPQueueHandler
+    
+    public var onTrap: EventLoopFuture<SNMPMessage> {
+        return handler.trapPromise.futureResult
+    }
+    
+    public var onError: EventLoopFuture<Error> {
+        return handler.errorPromise.futureResult
+    }
+    
     public var eventLoop: EventLoop {
         return channel.eventLoop
     }
+    
     public var onClose: EventLoopFuture<Void> {
         return channel.closeFuture
     }
-    
+
     /// Start a Datagram Server and bind to the host & port
     ///
     /// - Parameters:
     ///   - hostname: The hostname to bind on
     ///   - port: The port to bind on
     ///   - group: The eventLoopGroup to run
-    ///   - onError: on error message
-    ///   - onTrap: on trap message
     /// - Returns: future SNMPManager
     public static func start(
         hostname: String,
         port: Int,
-        on group: EventLoopGroup,
-        onError: @escaping (Error) -> Void,
-        onTrap: @escaping (SNMPMessage) -> Void
+        on group: EventLoopGroup
     ) -> EventLoopFuture<SNMPManager> {
         let snmpParser = SNMPResponseParser()
-        let queueHandler = SNMPQueueHandler(on: group, onError: onError, onTrap: onTrap)
+        let queueHandler = SNMPQueueHandler(on: group)
         let bootstrap = DatagramBootstrap(group: group)
             .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
             .channelInitializer { channel in
@@ -190,19 +196,15 @@ private final class SNMPQueueHandler: ChannelInboundHandler {
     
     private let eventLoop: EventLoop
     private weak var waitingCtx: ChannelHandlerContext?
-    private var errorHandler: (Error) -> ()
-    private var trapHandler: (SNMPMessage) -> ()
+    internal var trapPromise: EventLoopPromise<SNMPMessage>
+    internal var errorPromise: EventLoopPromise<Error>
     
-    init(
-        on worker: Worker,
-        onError: @escaping (Error) -> (),
-        onTrap: @escaping (SNMPMessage) -> ()
-    ) {
+    init(on worker: Worker) {
         self.inputQueue = [:]
         self.outputQueue = []
         self.eventLoop = worker.eventLoop
-        self.errorHandler = onError
-        self.trapHandler = onTrap
+        self.trapPromise = worker.eventLoop.newPromise()
+        self.errorPromise = worker.eventLoop.newPromise()
     }
 
     func enqueue(_ output: [AddressedEnvelope<ByteBuffer>], inputKey: Int, timeout: Int, onInput: @escaping (InboundIn) throws -> Void) -> Future<Void> {
@@ -261,7 +263,7 @@ private final class SNMPQueueHandler: ChannelInboundHandler {
                 }
             }
         case .trap, .v2cTrap:
-            trapHandler(input)
+            trapPromise.succeed(result: input)
         default:
             return
         }
@@ -272,7 +274,7 @@ private final class SNMPQueueHandler: ChannelInboundHandler {
     }
     
     func errorCaught(ctx: ChannelHandlerContext, error: Error) {
-        errorHandler(error)
+        errorPromise.succeed(result: error)
     }
 }
 
