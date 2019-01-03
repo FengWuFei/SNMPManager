@@ -44,12 +44,13 @@ public final class SNMPManager: Service {
         port: Int,
         on group: EventLoopGroup
     ) -> EventLoopFuture<SNMPManager> {
-        let snmpParser = SNMPResponseParser()
+        let snmpDecoder = SNMPMessageDecoder()
+        let snmpEncoder = SNMPMessageEncoder()
         let queueHandler = SNMPQueueHandler(on: group)
         let bootstrap = DatagramBootstrap(group: group)
             .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
             .channelInitializer { channel in
-                return channel.pipeline.addHandlers([snmpParser, queueHandler], first: false)
+                return channel.pipeline.addHandlers([snmpDecoder, snmpEncoder, queueHandler], first: false)
         }
         return bootstrap.bind(host: hostname, port: port)
             .map { SNMPManager(channel: $0, handler: queueHandler) }
@@ -116,7 +117,7 @@ public final class SNMPManager: Service {
         hostname: String,
         port: Int = 161,
         timeout: Int = 15
-    )  -> Future<SNMPMessage> {
+    ) -> Future<SNMPMessage> {
         return send(
             .set,
             dic: dic,
@@ -136,30 +137,27 @@ public final class SNMPManager: Service {
         hostname: String,
         port: Int,
         timeout: Int
-    )  -> Future<SNMPMessage> {
+    ) -> Future<SNMPMessage> {
         let requestId = Int.random(in: 0x1000000...0xfffffff)
         let vb = ValueBinds(dic)
         let pdu = SNMPBasicPDU(type: type, requestId: Int(requestId), errorStatus: .noError, errorIndex: 0, valueBinds: vb)
         let message = SNMPMessage(version: version, community: community, pdu: .basic(pdu))
-        return send(request: message, uniqueId: requestId, hostname: hostname, port: port, timeout: timeout)
+        return send(message: message, uniqueId: requestId, hostname: hostname, port: port, timeout: timeout)
     }
     
-    private func send(request: SNMPMessage, uniqueId: Int, hostname: String, port: Int, timeout: Int) -> Future<SNMPMessage> {
-        let bytes: [UInt8]
+    private func send(message: SNMPMessage, uniqueId: Int, hostname: String, port: Int, timeout: Int) -> Future<SNMPMessage> {
         do {
-            bytes = try request.berEncode()
+            let address = try SocketAddress.newAddressResolving(host: hostname, port: port)
+            let ms = SNMPOutMessage(remoteAddress: address, message: message)
+            return send(ms, uniqueId: uniqueId, timeout: timeout)
         } catch {
             return channel.eventLoop.newFailedFuture(error: error)
         }
-        var buffer = channel.allocator.buffer(capacity: bytes.count)
-        buffer.write(bytes: bytes)
-        let ms = AddressedEnvelope(remoteAddress: try! SocketAddress.newAddressResolving(host: hostname, port: port), data: buffer)
-        return send(ms, uniqueId: uniqueId, timeout: timeout)
     }
 
-    private func send(_ request: AddressedEnvelope<ByteBuffer>, uniqueId: Int, timeout: Int) -> Future<SNMPMessage> {
+    private func send(_ message: SNMPOutMessage, uniqueId: Int, timeout: Int) -> Future<SNMPMessage> {
         var res: SNMPMessage?
-        return handler.enqueue([request], inputKey: uniqueId, timeout: timeout) { message in
+        return handler.enqueue([message], inputKey: uniqueId, timeout: timeout) { message in
             res = message
         }.map(to: SNMPMessage.self) {
             return res!
@@ -167,9 +165,9 @@ public final class SNMPManager: Service {
     }
 }
 
-private final class SNMPResponseParser: ChannelInboundHandler {
+private final class SNMPMessageDecoder: ChannelInboundHandler {
     typealias InboundIn = AddressedEnvelope<ByteBuffer>
-    typealias OutboundOut = SNMPMessage
+    typealias InboundOut = SNMPMessage
     
     func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
         var buffer = unwrapInboundIn(data).data
@@ -180,7 +178,30 @@ private final class SNMPResponseParser: ChannelInboundHandler {
         let decoder = SNMPDecoder()
         do {
             let res = try decoder.decode(bytes)
-            ctx.fireChannelRead(wrapOutboundOut(res))
+            ctx.fireChannelRead(wrapInboundOut(res))
+        } catch {
+            ctx.fireErrorCaught(error)
+        }
+    }
+}
+
+private struct SNMPOutMessage {
+    var remoteAddress: SocketAddress
+    var message: SNMPMessage
+}
+
+private final class SNMPMessageEncoder: ChannelOutboundHandler {
+    typealias OutboundIn = SNMPOutMessage
+    typealias OutboundOut = AddressedEnvelope<ByteBuffer>
+    
+    func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+        let outMessage = self.unwrapOutboundIn(data)
+        do {
+            let bytes = try outMessage.message.berEncode()
+            var buffer = ctx.channel.allocator.buffer(capacity: bytes.count)
+            buffer.write(bytes: bytes)
+            let udpMessage = AddressedEnvelope(remoteAddress: outMessage.remoteAddress, data: buffer)
+            ctx.write(self.wrapOutboundOut(udpMessage), promise: promise)
         } catch {
             ctx.fireErrorCaught(error)
         }
@@ -189,10 +210,10 @@ private final class SNMPResponseParser: ChannelInboundHandler {
 
 private final class SNMPQueueHandler: ChannelInboundHandler {
     typealias InboundIn = SNMPMessage
-    typealias OutboundOut = AddressedEnvelope<ByteBuffer>
+    typealias OutboundOut = SNMPOutMessage
     
     private var inputQueue: [Int: InputContext<InboundIn>]
-    private var outputQueue: [[AddressedEnvelope<ByteBuffer>]]
+    private var outputQueue: [[SNMPOutMessage]]
     
     private let eventLoop: EventLoop
     private weak var waitingCtx: ChannelHandlerContext?
@@ -207,7 +228,7 @@ private final class SNMPQueueHandler: ChannelInboundHandler {
         self.errorPromise = worker.eventLoop.newPromise()
     }
 
-    func enqueue(_ output: [AddressedEnvelope<ByteBuffer>], inputKey: Int, timeout: Int, onInput: @escaping (InboundIn) throws -> Void) -> Future<Void> {
+    func enqueue(_ output: [SNMPOutMessage], inputKey: Int, timeout: Int, onInput: @escaping (InboundIn) throws -> Void) -> Future<Void> {
         guard eventLoop.inEventLoop else {
             return eventLoop.submit {
                 // do nothing
