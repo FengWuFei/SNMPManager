@@ -24,8 +24,7 @@ extension SNMPBasicPDU: BerEncodable {
         let _requestId = BerWrapper(requestId)
         let _errorStatus = errorStatus
         let _errorIndex = BerWrapper(errorIndex)
-        let _valueBinds = valueBinds
-        let value: [BerEncodable] = [_requestId, _errorStatus, _errorIndex, _valueBinds]
+        let value: [BerEncodable] = [_requestId, _errorStatus, _errorIndex, valueBinds]
         return try AnyBerWrapper(tag: pduType, value: value).berEncode()
     }
 }
@@ -36,23 +35,8 @@ extension SNMPTrapPDU: BerEncodable {
         let _agentAddress = BerWrapper(SNMPIpAddress(value: agentAddress))
         let _generic =  BerWrapper(generic)
         let _specific = BerWrapper(specific)
-        let _valueBinds = valueBinds
-        let value: [BerEncodable] = [_enterprise, _agentAddress, _generic, _specific, _valueBinds]
+        let value: [BerEncodable] = [_enterprise, _agentAddress, _generic, _specific, valueBinds]
         return try AnyBerWrapper(tag: pduType, value: value).berEncode()
-    }
-}
-
-extension ValueBinds: BerEncodable {
-    public func berEncode() throws -> [UInt8] {
-        let bytes = try dic.reduce([]) { (res, element) throws -> [UInt8] in
-            do {
-                let data = try BerObjectId(value: element.key).wrapedAndEncode() + element.value.wrapedAndEncode()
-                return try res + BytesSequence(value: data).wrapedAndEncode()
-            } catch {
-                throw error
-            }
-        }
-        return try BytesSequence(value: bytes).wrapedAndEncode()
     }
 }
 

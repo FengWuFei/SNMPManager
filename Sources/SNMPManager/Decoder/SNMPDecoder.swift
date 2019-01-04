@@ -18,15 +18,14 @@ final class SNMPDecoder {
             
             let pdu: PDU
             
-            var valueBinds = ValueBinds([])
-         
             if pduType == .trap {
                 let enterprise: BerObjectId = try decoder.readValue()
                 let agentAddress: SNMPIpAddress = try decoder.readValue()
                 let generic: Int = try decoder.readValue()
                 let specific: Int = try decoder.readValue()
-                valueBinds.dic = try decoder.readValueBinds()
-                pdu = .v1Trap(SNMPTrapPDU(enterprise: enterprise.value, agentAddress: agentAddress.value, generic: generic, specific: specific, valueBinds: valueBinds))
+                let timeStamp: SNMPTimeTicks = try decoder.readValue()
+                let valueBinds = try decoder.readValueBinds()
+                pdu = .v1Trap(SNMPTrapPDU(enterprise: enterprise.value, agentAddress: agentAddress.value, generic: generic, specific: specific, timeStamp: timeStamp.value, valueBinds: valueBinds))
             } else {
                 let requestId: Int = try decoder.readValue()
                 let _errorStatus: Int = try decoder.readValue()
@@ -34,7 +33,7 @@ final class SNMPDecoder {
                     throw BerDecodeError.invalidErrorStatus
                 }
                 let errorIndex: Int = try decoder.readValue()
-                valueBinds.dic = try decoder.readValueBinds()
+                let valueBinds = try decoder.readValueBinds()
                 pdu = .basic(SNMPBasicPDU(type: pduType, requestId: requestId, errorStatus: errorStatus, errorIndex: errorIndex, valueBinds: valueBinds))
             }
             return SNMPMessage(version: version, community: community, pdu: pdu)

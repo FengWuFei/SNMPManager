@@ -183,3 +183,17 @@ extension Array: BerEncodable where Element == BerEncodable {
         return try reduce([]) { try $0 + $1.berEncode() }
     }
 }
+
+extension Dictionary: BerEncodable where Key == String, Value == BerTagedObject {
+    public func berEncode() throws -> [UInt8] {
+        let bytes = try self.reduce([]) { (res, element) throws -> [UInt8] in
+            do {
+                let data = try BerObjectId(value: element.key).wrapedAndEncode() + element.value.wrapedAndEncode()
+                return try res + BytesSequence(value: data).wrapedAndEncode()
+            } catch {
+                throw error
+            }
+        }
+        return try BytesSequence(value: bytes).wrapedAndEncode()
+    }
+}

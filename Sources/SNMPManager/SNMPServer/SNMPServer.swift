@@ -95,9 +95,11 @@ public final class SNMPManager: Service {
         port: Int = 161,
         timeout: Int = 15
         )  -> Future<SNMPMessage> {
+        var dic: [String: BerTagedObject] = [:]
+        oids.forEach { dic[$0] = BerNull() }
         return send(
             .get,
-            dic: oids.map { ($0, BerNull()) },
+            dic: dic,
             version: version,
             community: community,
             hostname: hostname,
@@ -117,7 +119,7 @@ public final class SNMPManager: Service {
     ///   - timeout: wait timeout
     /// - Returns: future SNMPMessage
     public func set(
-        _ dic: [(String, BerTagedObject)],
+        dic: [String: BerTagedObject],
         version: SNMPVersion = .v2c,
         community: String,
         hostname: String,
@@ -137,7 +139,7 @@ public final class SNMPManager: Service {
     
     private func send(
         _ type: PDUType,
-        dic: [(key: String, value: BerTagedObject)],
+        dic: [String: BerTagedObject],
         version: SNMPVersion,
         community: String,
         hostname: String,
@@ -145,8 +147,7 @@ public final class SNMPManager: Service {
         timeout: Int
         ) -> Future<SNMPMessage> {
         let requestId = Int.random(in: 0x1000000...0xfffffff)
-        let vb = ValueBinds(dic)
-        let pdu = SNMPBasicPDU(type: type, requestId: Int(requestId), errorStatus: .noError, errorIndex: 0, valueBinds: vb)
+        let pdu = SNMPBasicPDU(type: type, requestId: Int(requestId), errorStatus: .noError, errorIndex: 0, valueBinds: dic)
         let message = SNMPMessage(version: version, community: community, pdu: .basic(pdu))
         return send(message: message, uniqueId: requestId, hostname: hostname, port: port, timeout: timeout)
     }

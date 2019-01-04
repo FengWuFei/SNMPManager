@@ -61,15 +61,15 @@ class BerDecoder {
         }
     }
     
-    func readValueBinds() throws -> [(String, BerTagedObject)] {
+    func readValueBinds() throws -> [String: BerTagedObject] {
         do {
-            var dic: [(String, BerTagedObject)] = []
+            var dic: [String: BerTagedObject] = [:]
             try readSequence()
             while hasValue {
                 try readSequence()
                 let oid: BerObjectId = try readValue()
                 let value = try readAny()
-                dic.append((oid.value, value))
+                dic[oid.value] = value
             }
             return dic
         } catch {
