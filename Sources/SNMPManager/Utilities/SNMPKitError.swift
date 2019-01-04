@@ -23,8 +23,8 @@ public struct BerDecodeError: Error, Debuggable {
     }
     
     public mutating func addReason(reason: String) -> BerDecodeError {
-        self.reason = self.reason + ":" + reason
-        return self
+        let error = BerDecodeError(reason: self.reason + ":" + reason)
+        return error
     }
 }
 
@@ -45,7 +45,7 @@ public struct BerEncodeError: Error, Debuggable {
     }
     
     public mutating func addReason(reason: String) -> BerEncodeError {
-        self.reason = self.reason + ":" + reason
-        return self
+        let error = BerEncodeError(reason: self.reason + ":" + reason)
+        return error
     }
 }
