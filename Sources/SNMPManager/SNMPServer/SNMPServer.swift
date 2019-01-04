@@ -11,17 +11,23 @@ public enum SNMPManagerError: String, Error, Debuggable {
     }
 }
 
+public typealias TrapHandler = (SNMPMessage) -> Void
+public typealias ErrorHandler = (Error) -> Void
+
 /// SNMP NSM Server
 public final class SNMPManager: Service {
     private let channel: Channel
     private var handler: SNMPQueueHandler
     
-    public var onTrap: EventLoopFuture<SNMPMessage> {
-        return handler.trapPromise.futureResult
+    public var onTrap: TrapHandler? {
+        didSet {
+            handler.onTrap = onTrap
+        }
     }
-    
-    public var onError: EventLoopFuture<Error> {
-        return handler.errorPromise.futureResult
+    public var onError: ErrorHandler? {
+        didSet {
+            handler.onError = onError
+        }
     }
     
     public var eventLoop: EventLoop {
@@ -43,7 +49,7 @@ public final class SNMPManager: Service {
         hostname: String,
         port: Int,
         on group: EventLoopGroup
-        ) -> EventLoopFuture<SNMPManager> {
+    ) -> EventLoopFuture<SNMPManager> {
         let snmpDecoder = SNMPMessageDecoder()
         let snmpEncoder = SNMPMessageEncoder()
         let queueHandler = SNMPQueueHandler(on: group)
@@ -212,15 +218,13 @@ private final class SNMPQueueHandler: ChannelInboundHandler {
     
     private let eventLoop: EventLoop
     private weak var waitingCtx: ChannelHandlerContext?
-    internal var trapPromise: EventLoopPromise<SNMPMessage>
-    internal var errorPromise: EventLoopPromise<Error>
+    var onTrap: TrapHandler?
+    var onError: ErrorHandler?
     
     init(on worker: Worker) {
         self.inputQueue = [:]
         self.outputQueue = []
         self.eventLoop = worker.eventLoop
-        self.trapPromise = worker.eventLoop.newPromise()
-        self.errorPromise = worker.eventLoop.newPromise()
     }
     
     func enqueue(_ output: [SNMPOutMessage], inputKey: Int, timeout: Int) -> Future<InboundIn> {
@@ -276,7 +280,7 @@ private final class SNMPQueueHandler: ChannelInboundHandler {
                 current.promise.succeed(result: input)
             }
         case .trap, .v2cTrap:
-            trapPromise.succeed(result: input)
+            onTrap?(input)
         default:
             return
         }
@@ -287,7 +291,7 @@ private final class SNMPQueueHandler: ChannelInboundHandler {
     }
     
     func errorCaught(ctx: ChannelHandlerContext, error: Error) {
-        errorPromise.succeed(result: error)
+        onError?(error)
     }
 }
 
