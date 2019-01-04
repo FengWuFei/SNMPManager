@@ -89,7 +89,7 @@ extension BerNull: BerCodable {
 extension BerObjectId: BerCodable {
     func berEncode() throws -> [UInt8] {
         guard NSPredicate(format: "SELF MATCHES %@", "^([0-9]+\\\(".")){3,}[0-9]+$")
-            .evaluate(with: value) else { throw BerEncodeError.intValueOID }
+            .evaluate(with: value) else { throw BerEncodeError.intValueOID.addReason(reason: self.value) }
         var bytes: [UInt8] = []
         var tmp = value.split(separator: ".")
             .map { Int($0)! }
@@ -158,7 +158,7 @@ extension BytesSequence: BerCodable {
 extension SNMPIpAddress: BerCodable {
     func berEncode() throws -> [UInt8] {
         return try self.value.split(separator: ".").map { byteStr throws -> UInt8 in
-            guard let byte = UInt8(byteStr) else { throw BerEncodeError.invalidIPAddress }
+            guard let byte = UInt8(byteStr) else { throw BerEncodeError.invalidIPAddress.addReason(reason: self.value) }
             return byte
         }
     }

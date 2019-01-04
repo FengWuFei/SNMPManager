@@ -1,32 +1,51 @@
 import Vapor
 
-public enum BerDecodeError: String, Error, Debuggable {
-    case outOfRange
-    case invalidTag
-    case indefiniteLength, lengthTooLong, lengthLostBytes
-    case nullString, wrongIntBytes
-    case invalidNull
-    case invalidVersion, invalidPDUType, invalidErrorStatus
+public struct BerDecodeError: Error, Debuggable {
+    public static var outOfRange = BerDecodeError(reason: "outOfRange")
+    public static var invalidTag = BerDecodeError(reason: "invalidTag")
+    public static var indefiniteLength = BerDecodeError(reason: "indefiniteLength")
+    public static var lengthTooLong = BerDecodeError(reason: "lengthTooLong")
+    public static var lengthLostBytes = BerDecodeError(reason: "lengthLostBytes")
+    public static var nullString = BerDecodeError(reason: "nullString")
+    public static var wrongIntBytes = BerDecodeError(reason: "wrongIntBytes")
+    public static var invalidNull = BerDecodeError(reason: "invalidNull")
+    public static var invalidVersion = BerDecodeError(reason: "invalidVersion")
+    public static var invalidPDUType = BerDecodeError(reason: "invalidPDUType")
+    public static var invalidErrorStatus = BerDecodeError(reason: "invalidErrorStatus")
     
     public var identifier: String {
         return "SNMPManagerDecodeError"
     }
-    public var reason: String {
-        return self.rawValue
+    public var reason: String
+    
+    public init(reason: String) {
+        self.reason = reason
+    }
+    
+    public mutating func addReason(reason: String) -> BerDecodeError {
+        self.reason = self.reason + ":" + reason
+        return self
     }
 }
 
-public enum BerEncodeError: String, Error, Debuggable {
-    case intValueTooLong
-    case uIntValueTooLong
-    case lengthTooLong
-    case invalidIPAddress
-    case intValueOID
+public struct BerEncodeError: Error, Debuggable {
+    public static var intValueTooLong = BerDecodeError(reason: "intValueTooLong")
+    public static var uIntValueTooLong = BerDecodeError(reason: "uIntValueTooLong")
+    public static var lengthTooLong = BerDecodeError(reason: "lengthTooLong")
+    public static var invalidIPAddress = BerDecodeError(reason: "invalidIPAddress")
+    public static var intValueOID = BerDecodeError(reason: "intValueOID")
     
     public var identifier: String {
         return "SNMPManagerEncodeError"
     }
-    public var reason: String {
-        return self.rawValue
+    public var reason: String
+    
+    public init(reason: String) {
+        self.reason = reason
+    }
+    
+    public mutating func addReason(reason: String) -> BerEncodeError {
+        self.reason = self.reason + ":" + reason
+        return self
     }
 }
