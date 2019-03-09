@@ -52,7 +52,7 @@ public final class SNMPManager: Service {
     ) -> EventLoopFuture<SNMPManager> {
         let snmpDecoder = SNMPMessageDecoder()
         let snmpEncoder = SNMPMessageEncoder()
-        let queueHandler = SNMPQueueHandler(on: group)
+        let queueHandler = SNMPQueueHandler()
         let bootstrap = DatagramBootstrap(group: group)
             .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
             .channelInitializer { channel in
@@ -163,7 +163,18 @@ public final class SNMPManager: Service {
     }
     
     private func send(_ message: SNMPOutMessage, uniqueId: Int, timeout: Int) -> Future<SNMPMessage> {
-        return handler.enqueue([message], inputKey: uniqueId, timeout: timeout)
+        let inboundPromise = channel.eventLoop.newPromise(SNMPMessage.self)
+        let outboundPromise = channel.eventLoop.newPromise(Void.self)
+        let context = SNMPClientRequestContext(
+            message: message,
+            uniqueId: uniqueId,
+            timeout: timeout,
+            inboundPromise: inboundPromise
+        )
+        self.channel.write(context, promise: outboundPromise)
+        return outboundPromise.futureResult
+            .and(inboundPromise.futureResult)
+            .map { $1 }
     }
 }
 
@@ -187,11 +198,6 @@ private final class SNMPMessageDecoder: ChannelInboundHandler {
     }
 }
 
-private struct SNMPOutMessage {
-    var remoteAddress: SocketAddress
-    var message: SNMPMessage
-}
-
 private final class SNMPMessageEncoder: ChannelOutboundHandler {
     typealias OutboundIn = SNMPOutMessage
     typealias OutboundOut = AddressedEnvelope<ByteBuffer>
@@ -210,85 +216,46 @@ private final class SNMPMessageEncoder: ChannelOutboundHandler {
     }
 }
 
-private final class SNMPQueueHandler: ChannelInboundHandler {
-    typealias InboundIn = SNMPMessage
+private final class SNMPQueueHandler: ChannelDuplexHandler {
+    typealias OutboundIn = SNMPClientRequestContext
     typealias OutboundOut = SNMPOutMessage
+    typealias InboundIn = SNMPMessage
     
-    private var inputQueue: [Int: InputContext<InboundIn>]
-    private var outputQueue: [OutputContext]
-    
-    private let eventLoop: EventLoop
-    private weak var waitingCtx: ChannelHandlerContext?
+    private var queue: [Int: SNMPClientRequestContext]
     var onTrap: TrapHandler?
     var onError: ErrorHandler?
     
-    init(on worker: Worker) {
-        self.inputQueue = [:]
-        self.outputQueue = []
-        self.eventLoop = worker.eventLoop
+    init() {
+        self.queue = [:]
     }
-    
-    func enqueue(_ output: [SNMPOutMessage], inputKey: Int, timeout: Int) -> Future<InboundIn> {
-        guard eventLoop.inEventLoop else {
-            return eventLoop.submit {
-                // do nothing
-                }.flatMap {
-                    // perform this on the event loop
-                    return self.enqueue(output, inputKey: inputKey, timeout: timeout)
-            }
-        }
-        let outputPromise = eventLoop.newPromise(Void.self)
-        let outputContext = OutputContext(promise: outputPromise, message: output)
-        let inputPromise = eventLoop.newPromise(InboundIn.self)
-        let inputContext = InputContext<InboundIn>(promise: inputPromise)
-        outputQueue.insert(outputContext, at: 0)
-        inputQueue[inputKey] = inputContext
-        eventLoop.scheduleTask(in: TimeAmount.seconds(timeout)) { [unowned self]  in
-            self.inputQueue[inputKey]?.promise.fail(error: SNMPManagerError.equipmentNoResponse)
-        }
-        if let ctx = waitingCtx {
-            ctx.eventLoop.execute {
-                self.writeOutputIfEnqueued(ctx: ctx)
-            }
-        }
-        return outputPromise.futureResult.and(inputPromise.futureResult)
-            .always { [unowned self] in
-                self.inputQueue.removeValue(forKey: inputKey)
-            }
-            .map { $1 }
-    }
-    
-    private func writeOutputIfEnqueued(ctx: ChannelHandlerContext) {
-        while let next = outputQueue.popLast() {
-            for output in next.message {
-                ctx.write(wrapOutboundOut(output), promise: next.promise)
-            }
-            ctx.flush()
-        }
-        waitingCtx = ctx
-    }
-    
+
     func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
-        let input = unwrapInboundIn(data)
-        let pduType = input.pdu.type
+        let res = unwrapInboundIn(data)
+        let pduType = res.pdu.type
         switch pduType {
         case .res:
-            if case let PDU.basic(pdu) = input.pdu {
+            if case let PDU.basic(pdu) = res.pdu {
                 let requestID = pdu.requestId
-                guard let current = inputQueue[requestID] else {
-                    return
-                }
-                current.promise.succeed(result: input)
+                guard let current = queue[requestID] else { return }
+                current.inboundPromise.succeed(result: res)
+                queue.removeValue(forKey: requestID)
             }
         case .trap, .v2cTrap:
-            onTrap?(input)
+            onTrap?(res)
         default:
             return
         }
     }
     
-    func channelActive(ctx: ChannelHandlerContext) {
-        writeOutputIfEnqueued(ctx: ctx)
+    func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+        let req = self.unwrapOutboundIn(data)
+        queue[req.uniqueId] = req
+        ctx.write(self.wrapOutboundOut(req.message), promise: promise)
+        ctx.eventLoop.scheduleTask(in: TimeAmount.seconds(req.timeout)) { [unowned self]  in
+            self.queue[req.uniqueId]?.inboundPromise.fail(error: SNMPManagerError.equipmentNoResponse)
+            self.queue.removeValue(forKey: req.uniqueId)
+        }
+        ctx.flush()
     }
     
     func errorCaught(ctx: ChannelHandlerContext, error: Error) {
@@ -296,11 +263,14 @@ private final class SNMPQueueHandler: ChannelInboundHandler {
     }
 }
 
-fileprivate struct InputContext<In> {
-    var promise: Promise<In>
+fileprivate struct SNMPOutMessage {
+    var remoteAddress: SocketAddress
+    var message: SNMPMessage
 }
 
-fileprivate struct OutputContext {
-    var promise: Promise<Void>
-    var message: [SNMPOutMessage]
+fileprivate struct SNMPClientRequestContext {
+    var message: SNMPOutMessage
+    var uniqueId: Int
+    var timeout: Int
+    var inboundPromise: EventLoopPromise<SNMPMessage>
 }
