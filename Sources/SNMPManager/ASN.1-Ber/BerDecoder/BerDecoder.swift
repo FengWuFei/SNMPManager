@@ -20,104 +20,76 @@ class BerDecoder {
     }
     
     func readSequence() throws {
-        do {
-            try readTag(BerTag.sequence)
-            try readLength()
-        } catch {
-            throw error
-        }
+        try readTag(BerTag.sequence)
+        try readLength()
     }
     
     func readPduType() throws -> UInt8 {
-        do {
-            let tag = try readTag()
-            try readLength()
-            return tag
-        } catch {
-            throw error
-        }
+        let tag = try readTag()
+        try readLength()
+        return tag
     }
     
     func readValue<T: BerTagedObject>(to type: T.Type = T.self) throws -> T {
-        do {
-            try readTag(T.tag)
-            let length = try readLength()
-            return try T.berDecode(readBytesWith(length))
-        } catch {
-            throw error
-        }
+        try readTag(T.tag)
+        let length = try readLength()
+        return try T.berDecode(readBytesWith(length))
     }
     
     func readAny() throws -> BerTagedObject {
-        do {
-            let _tag = bytes[offset]
-            guard let tag = BerTag(rawValue: _tag) else { throw BerDecodeError.invalidTag }
-            let Type = try tag.getBerType()
-            try readTag(Type.tag)
-            let length = try readLength()
-            return try Type.berDecode(readBytesWith(length))
-        } catch {
-            throw error
-        }
+        let _tag = bytes[offset]
+        guard let tag = BerTag(rawValue: _tag) else { throw BerDecodeError.invalidTag }
+        let Type = try tag.getBerType()
+        try readTag(Type.tag)
+        let length = try readLength()
+        return try Type.berDecode(readBytesWith(length))
     }
     
     func readValueBinds() throws -> [String: BerTagedObject] {
-        do {
-            var dic: [String: BerTagedObject] = [:]
+        var dic: [String: BerTagedObject] = [:]
+        try readSequence()
+        while hasValue {
             try readSequence()
-            while hasValue {
-                try readSequence()
-                let oid: BerObjectId = try readValue()
-                let value = try readAny()
-                dic[oid.value] = value
-            }
-            return dic
-        } catch {
-            throw error
+            let oid: BerObjectId = try readValue()
+            let value = try readAny()
+            dic[oid.value] = value
         }
+        return dic
     }
     
     @discardableResult
     func readTag(_ expect: BerEncodable? = nil) throws -> UInt8 {
-        do {
-            let readTag = try readOneByte()
-            guard let expectTag = try expect?.berEncode()[0] else { return readTag }
-            if readTag != expectTag {
-                throw BerDecodeError.invalidTag
-            }
-            return readTag
-        } catch {
-            throw error
+        let readTag = try readOneByte()
+        guard let expectTag = try expect?.berEncode()[0] else { return readTag }
+        if readTag != expectTag {
+            throw BerDecodeError.invalidTag
         }
+        return readTag
     }
     
     @discardableResult
     func readLength() throws -> Int {
-        do {
-            var length: Int
-            var lengthByte = try readOneByte() & 0xff
-            if (lengthByte & 0x80) == 0x80 {
-                lengthByte &= 0x7f
-                if lengthByte == 0 {
-                    throw BerDecodeError.indefiniteLength
-                }
-                if lengthByte > 3 {
-                    throw BerDecodeError.lengthTooLong
-                }
-                if bytes.count - (offset) < Int(lengthByte) {
-                    throw BerDecodeError.lengthLostBytes
-                }
-                length = 0
-                for _ in (0..<lengthByte) {
-                    length = (length << 8) + Int((try readOneByte() & 0xff))
-                }
-            } else {
-                length = Int(lengthByte)
+        var length: Int
+        var lengthByte = try readOneByte() & 0xff
+        if (lengthByte & 0x80) == 0x80 {
+            lengthByte &= 0x7f
+            if lengthByte == 0 {
+                throw BerDecodeError.indefiniteLength
             }
-            return length
-        } catch {
-            throw error
+            if lengthByte > 3 {
+                throw BerDecodeError.lengthTooLong
+            }
+            if bytes.count - (offset) < Int(lengthByte) {
+                throw BerDecodeError.lengthLostBytes
+            }
+            length = 0
+            for _ in (0..<lengthByte) {
+                length = (length << 8) + Int((try readOneByte() & 0xff))
+            }
+        } else {
+            length = Int(lengthByte)
         }
+        return length
     }
     
     private func readOneByte() throws -> UInt8 {

@@ -56,11 +56,7 @@ extension UInt: BerCodable {
     }
     
     public func berEncode() throws -> [UInt8] {
-        do {
-            return try Int(self).berEncode()
-        } catch {
-            throw error
-        }
+        return try Int(self).berEncode()
     }
 }
 
@@ -158,7 +154,9 @@ extension BytesSequence: BerCodable {
 extension SNMPIpAddress: BerCodable {
     func berEncode() throws -> [UInt8] {
         return try self.value.split(separator: ".").map { byteStr throws -> UInt8 in
-            guard let byte = UInt8(byteStr) else { throw BerEncodeError.invalidIPAddress.addReason(reason: self.value) }
+            guard let byte = UInt8(byteStr) else {
+                throw BerEncodeError.invalidIPAddress.addReason(reason: self.value)
+            }
             return byte
         }
     }
@@ -187,12 +185,8 @@ extension Array: BerEncodable where Element == BerEncodable {
 extension Dictionary: BerEncodable where Key == String, Value == BerTagedObject {
     public func berEncode() throws -> [UInt8] {
         let bytes = try self.reduce([]) { (res, element) throws -> [UInt8] in
-            do {
-                let data = try BerObjectId(value: element.key).wrapedAndEncode() + element.value.wrapedAndEncode()
-                return try res + BytesSequence(value: data).wrapedAndEncode()
-            } catch {
-                throw error
-            }
+            let data = try BerObjectId(value: element.key).wrapedAndEncode() + element.value.wrapedAndEncode()
+            return try res + BytesSequence(value: data).wrapedAndEncode()
         }
         return try BytesSequence(value: bytes).wrapedAndEncode()
     }

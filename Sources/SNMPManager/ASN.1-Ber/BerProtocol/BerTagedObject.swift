@@ -9,11 +9,7 @@ extension BerTagedObject {
     }
     
     func wrapedAndEncode() throws -> [UInt8] {
-        do {
-            return try BerWrapper(self).berEncode()
-        } catch {
-            throw error
-        }
+        return try BerWrapper(self).berEncode()
     }
 }
 

@@ -8,13 +8,9 @@ protocol BerObject: BerEncodable {
 
 extension BerEncodable where Self: BerObject {
     func berEncode() throws -> [UInt8] {
-        do {
-            let valueBytes = try value.berEncode()
-            let lengthBytes = try Length(value: valueBytes.count).berEncode()
-            let tagBytes = try tag.berEncode()
-            return tagBytes + lengthBytes + valueBytes
-        } catch {
-            throw error
-        }
+        let valueBytes = try value.berEncode()
+        let lengthBytes = try Length(value: valueBytes.count).berEncode()
+        let tagBytes = try tag.berEncode()
+        return tagBytes + lengthBytes + valueBytes
     }
 }
